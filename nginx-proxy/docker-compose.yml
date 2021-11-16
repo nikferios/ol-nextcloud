@@ -1,0 +1,71 @@
+version: '3'
+
+services:
+  db:
+    image: mariadb:${MARIADB_IMAGE}
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    restart: always
+    volumes:
+      - db:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=!5up3reXtr45trong5tring%
+    env_file:
+      - db.env
+
+  redis:
+    image: redis:${REDIS_IMAGE}
+    restart: always
+
+  app:
+    image: nextcloud:${NEXTCLOUD_IMAGE}
+    restart: always
+    volumes:
+      - nextcloud:/var/www/html
+      - ${NEXTCLOUD_ROOT}/data/:${DATA_DIR}
+      - ${CONFIG_DIR}/nextcloud/overcloud-recommended.ini:/usr/local/etc/php/conf.d/overcloud-recommended.ini
+    environment:
+      - MYSQL_HOST=db
+      - REDIS_HOST=redis
+      - NEXTCLOUD_DATA_DIR=${DATA_DIR}
+      - NEXTCLOUD_TRUSTED_DOMAINS=${NEXTCLOUD_FQDN}
+    env_file:
+      - db.env
+    depends_on:
+      - db
+      - redis
+
+  web:
+    image: nginx:${NGINX_IMAGE}
+    hostname: overcloud
+    restart: always
+    volumes:
+      - nextcloud:/var/www/html:ro
+      - ./web/nginx.conf:/etc/nginx/nginx.conf:ro
+    environment:
+      - VIRTUAL_HOST=${NEXTCLOUD_FQDN}
+      - LETSENCRYPT_HOST=${NEXTCLOUD_FQDN}
+      - LETSENCRYPT_EMAIL=contac@overlogic.gr
+    depends_on:
+      - app
+    networks:
+      - proxy-tier
+      - default
+
+  cron:
+    image: nextcloud:${NEXTCLOUD_IMAGE}
+    restart: always
+    volumes:
+      - nextcloud:/var/www/html
+    entrypoint: /cron.sh
+    depends_on:
+      - db
+      - redis
+
+volumes:
+  db:
+  nextcloud:
+
+networks:
+  proxy-tier:
+    external:
+      name: nginx-proxy_proxy-network
